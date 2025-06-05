@@ -1,9 +1,11 @@
-import axios from 'axios';
-
-export const uploadPDF = (formData) => axios.post('http://localhost:5000/upload', formData);
+export const uploadPDF = (formData) =>
+  fetch('http://127.0.0.1:5000/upload', {
+    method: 'POST',
+    body: formData,
+  }).then(res => res.json());
 
 export const streamAnswer = async (question, onToken) => {
-  const response = await fetch('http://localhost:5000/ask', {
+  const response = await fetch('http://127.0.0.1:5000/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question }),

@@ -1,12 +1,17 @@
-from langchain.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import FAISS
-from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
 from langchain.chains import RetrievalQA
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+assert os.getenv("OPENAI_API_KEY"), "❌ OPENAI_API_KEY is missing!"
+
 
 app = Flask(__name__)
 CORS(app)
@@ -29,7 +34,7 @@ def upload_pdf():
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     split_docs = splitter.split_documents(docs)
 
-    embeddings = OpenAIEmbeddings()
+    embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
     vectorstore = FAISS.from_documents(split_docs, embeddings)
 
     return jsonify({'status': 'indexed', 'chunks': len(split_docs)})
@@ -40,7 +45,11 @@ def ask_question():
     data = request.get_json()
     question = data['question']
 
-    llm = ChatOpenAI(model_name="gpt-3.5-turbo", streaming=True)
+    llm = ChatOpenAI(
+    model_name="gpt-3.5-turbo",
+    streaming=True,
+    openai_api_key=os.getenv("OPENAI_API_KEY")
+    )
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
         retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
@@ -50,8 +59,10 @@ def ask_question():
 
     def generate():
         for token in qa_chain.stream(question):
-            yield token.content
-
+            if isinstance(token, dict):
+                yield token.get('content') or token.get('result', '')
+            elif isinstance(token, str):
+                yield token
     return Response(generate(), mimetype='text/event-stream')
 
 if __name__ == '__main__':
