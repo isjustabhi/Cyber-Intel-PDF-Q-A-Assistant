@@ -2,16 +2,17 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
-from langchain.chains import RetrievalQA
-from langchain_community.chat_models import ChatOpenAI
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify
 from flask_cors import CORS
-import os
 from dotenv import load_dotenv
+import os
+import requests
 
+# Load environment variables
 load_dotenv()
 assert os.getenv("OPENAI_API_KEY"), "❌ OPENAI_API_KEY is missing!"
-
+assert os.getenv("LLM_API_KEY"), "❌ LLM_API_KEY is missing!"
+assert os.getenv("LLM_URL"), "❌ LLM_URL is missing!"
 
 app = Flask(__name__)
 CORS(app)
@@ -30,7 +31,6 @@ def upload_pdf():
 
     loader = PyPDFLoader(path)
     docs = loader.load()
-
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     split_docs = splitter.split_documents(docs)
 
@@ -45,25 +45,44 @@ def ask_question():
     data = request.get_json()
     question = data['question']
 
-    llm = ChatOpenAI(
-    model_name="gpt-3.5-turbo",
-    streaming=True,
-    openai_api_key=os.getenv("OPENAI_API_KEY")
-    )
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
-        return_source_documents=False,
-        chain_type="stuff",
-    )
+    docs = vectorstore.similarity_search(question, k=3)
+    context = "\n\n".join([doc.page_content for doc in docs])
 
-    def generate():
-        for token in qa_chain.stream(question):
-            if isinstance(token, dict):
-                yield token.get('content') or token.get('result', '')
-            elif isinstance(token, str):
-                yield token
-    return Response(generate(), mimetype='text/event-stream')
+    prompt = f"""
+You are a cybersecurity assistant with expertise in vulnerability analysis and mitigation.
+Use the context from the uploaded PDF to answer the question accurately.
+If the context does not contain the answer, clearly say "The answer is not available in the document."
+
+Context:
+{context}
+
+Question:
+{question}
+
+Answer:
+"""
+
+    headers = {
+        "Authorization": f"Bearer {os.getenv('LLM_API_KEY')}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": "Meta-Llama-3.1-70B-Instruct-quantized",
+        "messages": [
+            {"role": "system", "content": "You are a cybersecurity assistant."},
+            {"role": "user", "content": prompt}
+        ],
+        "stream": False
+    }
+
+    response = requests.post(os.getenv("LLM_URL") + "/chat/completions", headers=headers, json=payload)
+
+    if response.status_code != 200:
+        return jsonify({"error": response.json()}), 500
+
+    answer = response.json()["choices"][0]["message"]["content"]
+    return jsonify({"answer": answer})
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -11,14 +11,6 @@ export const streamAnswer = async (question, onToken) => {
     body: JSON.stringify({ question }),
   });
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-
-  let done = false;
-  while (!done) {
-    const { value, done: doneReading } = await reader.read();
-    done = doneReading;
-    const chunk = decoder.decode(value);
-    onToken(chunk);
-  }
+  const { answer } = await response.json();
+  onToken(answer); // Send entire response to callback
 };

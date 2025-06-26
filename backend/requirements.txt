@@ -1,3 +1,9 @@
+langchain
+langchain-community
+langchain-openai
 flask
 flask-cors
 python-dotenv
+faiss-cpu
+requests
+pypdf
