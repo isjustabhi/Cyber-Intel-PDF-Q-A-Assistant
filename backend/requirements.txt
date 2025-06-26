@@ -1,7 +1,3 @@
 flask
 flask-cors
-langchain
-openai
-faiss-cpu
-PyPDF2
 python-dotenv
